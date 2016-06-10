@@ -14,6 +14,8 @@ try:
 except IndexError:
 	SEASON = '1605'
 
+EMPTYRESULT = ' - '
+
 def get_name(tag):
 	text = tag.get_text().strip().lower()
 	text = text.replace('\n','')
@@ -27,7 +29,7 @@ def get_result(tag):
 	if res:
 		return tag.get_text().strip()
 	else:
-		return ' - '
+		return EMPTYRESULT
 
 ## Load page
 url = BASEURL % SEASON
@@ -44,7 +46,8 @@ if not page_request.ok:
 ## Parse html
 soup = BeautifulSoup(page_request.text, 'html.parser')
 
-divisions = {} # div rank -> list of player rows
+players   = {} # div rank -> list of player names
+results   = {} # player name -> list of results
 division_size = -1
 
 ## First pass: collect all divisions and players in each division
@@ -64,51 +67,60 @@ for table in soup.find_all('table'):
 				division_size = len(res_cols)
 
 			# Store the next N rows as player rows
-			for _ in range(division_size):
-				divisions.setdefault(rank, []).append(next(rows_iter))
+			prows = [next(rows_iter) for _ in range(division_size)]
 
-print 'Found %d divisions of size %d' % (len(divisions), division_size)
+			# Player entry is always the second one in the row
+			players[rank] = [get_name(r.find_all('td')[1]) for r in prows]
 
+			# Go through the rows and extract the match results
+			for name,prow in zip(players[rank], prows):
+				# Results start in 3rd position and we know how many to expect
+				match_results = prow.find_all('td')[2:division_size+2]
+				for entry in match_results:
+					results.setdefault(name, []).append(get_result(entry))
+
+			# ####### DEBUG
+			# break
+
+print 'Found %d divisions of size %d' % (len(players), division_size)
 
 # Make sure nothing was filled in the -1 rank
-assert divisions.get(-1, None) is None
+assert players.get(-1, None) is None
 # Make sure we found a division size
 assert division_size > 0
 # Make sure all divisions are the same size
-assert all([len(p) == division_size for p in divisions.values()])
+assert all([len(p) == division_size for p in players.values()])
 
 # for player,divrank in players.iteritems():
 # 	print '%-30s %d' % (player, divrank)
 
 ## Second pass: knowing the number of players in each division, get their results
-for divrank, playerrows in divisions.iteritems():
+for divrank, player_names in players.iteritems():
 	print '-----------------------'
 	print 'Processing division %2d' % divrank
-	for row in playerrows:
-		# Player name is always the second entry
-		player_entry = row.find_all('td', limit=2)[1]
-		print '%-30s'%get_name(player_entry),
 
-		match_results = row.find_all('td')[2:division_size+2]
-		for entry in match_results:
-			print get_result(entry),
-		print ''
+	matches = [] # (name1, name2, result)
+	for name in player_names:
+		for n, result in enumerate(results[name]):
+			if result == EMPTYRESULT: continue
+			print '%-30s vs %30s : %s' % (name, player_names[n], result)
 
-		# player = row.find(is_player)
-		# if not player:
-		# 	# Empty player row?
-		# 	player_name = '-'
-		# 	# print row
-		# 	# raise RuntimeError("Something went wrong, this is not a player row")
-		# else:
-		# 	player_name = get_name(player)
 
-		# print '%-30s' % player_name,
+# 		# player = row.find(is_player)
+# 		# if not player:
+# 		# 	# Empty player row?
+# 		# 	player_name = '-'
+# 		# 	# print row
+# 		# 	# raise RuntimeError("Something went wrong, this is not a player row")
+# 		# else:
+# 		# 	player_name = get_name(player)
 
-		# results = row.find_all(is_result)[:len(playerrows)]
-		# for entry in results:
-		# 	print get_result(entry),
-		# print ''
+# 		# print '%-30s' % player_name,
+
+# 		# results = row.find_all(is_result)[:len(playerrows)]
+# 		# for entry in results:
+# 		# 	print get_result(entry),
+# 		# print ''
 
 
 
