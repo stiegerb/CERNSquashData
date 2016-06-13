@@ -16,13 +16,103 @@ except IndexError:
 
 EMPTYRESULT = ' - '
 
+PNAMES = None
+def get_name_dictionary(filename):
+	global PNAMES
+	if not PNAMES:
+		PNAMES = {}
+		with open(filename, 'r') as ifile:
+			# PNAMES = dict([tuple(l.split(' ', 1)) for l in ifile if len(l)])
+			for line in ifile:
+				key,value = tuple(line.strip().split(',', 1))
+				PNAMES[key] = value.strip()
+	return len(PNAMES)
+
+
 def get_name(tag):
+	global PNAMES
 	text = tag.get_text().strip().lower()
-	text = text.replace('\n','')
-	text = text.replace('\r','')
-	text = text.replace('  ',' ')
-	text = re.sub(r'(\s?-?\s?\(?(1st|2nd|3rd|[1-9]{1}th) to finish\)?)', '', text)
+	text = text.replace('\n', '')
+	text = text.replace('\r', '')
 	text = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore')
+	text = re.sub(r'home','', text)
+	text = re.sub(r'(\s?-?\s?\(?(1st|2nd|3rd|[1-9]{1}th)\s+to\s+finish\)?)', '', text)
+	text = re.sub(r'\s+-$', '', text, re.MULTILINE)
+	text = re.sub(r'\s+out$', '', text, re.MULTILINE)
+	text = re.sub(r'[\#\+0-9\)\(\.]','', text)
+	text = re.sub(r'\s{2,}',' ', text)
+
+	text = text.replace('unavailable', '')
+	text = text.replace('out for summer', '')
+	text = text.replace(' ?', '')
+	text = text.strip()
+
+	key = text.replace(' ', '')
+	return PNAMES.setdefault(key, text.title())
+
+	# text = text.replace('vidal', '')
+	# text = text.replace('packagea', '')
+	# text = text.replace('zein assi', 'zein-assi')
+	# text = text.replace('alanackroyd', 'alan ackroyd')
+	# text = text.replace('alexanderpicolet pack a', 'alexander picolet')
+	# text = text.replace('alexander picolet packagea', 'alexander picolet')
+	# text = text.replace('andersunnervik', 'anders unnervik')
+	# text = text.replace('andersunnervik', 'anders unnervik')
+	# text = text.replace('spears', 'speirs')
+	# text = text.replace('angusspears', 'angus speirs')
+	# text = text.replace('angusspeirs', 'angus speirs')
+	# text = text.replace('antonyromero', 'antony romero')
+	# text = text.replace('arunyachevalley', 'arunya chevalley')
+	# text = text.replace('borjamanero', 'borja manero')
+	# text = text.replace('brennangoddard', 'brennan goddard')
+	# text = text.replace('brunobalhan', 'bruno balhan')
+	# text = text.replace('carlosolivera', 'carlos olivera')
+	# text = text.replace('carlos oliviera', 'carlos olivera')
+	# text = text.replace('cathernine goodrich', 'catherine goodrich')
+	# text = text.replace('christian carli', 'christian carli')
+	# text = text.replace('dave whitacker', 'dave whittaker')
+	# text = text.replace('davewhittaker', 'dave whittaker')
+	# text = text.replace('davidnisbet', 'david nisbet')
+	# text = text.replace('declancahill', 'declan cahill')
+	# text = text.replace('don mc donald', 'don macdonald')
+	# text = text.replace('donmacdonald', 'don macdonald')
+	# text = text.replace('donmc donald', 'don macdonald')
+	# text = text.replace('edgar mauricio fajardo hernandez', 'edgar fajardo-hernadez')
+	# text = text.replace('edgar mauricio fajardo-hernandez', 'edgar fajardo-hernadez')
+	# text = text.replace('eliseo duenos', 'eliseo perez-duenas')
+	# text = text.replace('eliseoduenos', 'eliseo perez-duenas')
+	# text = text.replace('eliseoperez-duenas', 'eliseo perez-duenas')
+	# text = text.replace('florianliebenau', 'florian liebenau')
+	# text = text.replace('fredricklaugier', 'fredrick laugier')
+	# text = text.replace('gabrielmetral', 'gabriel metral')
+	# text = text.replace('gerdabenedikt', 'gerda benedikt')
+	# text = text.replace('german carrillo', 'german carrillo montoya')
+	# text = text.replace('german montoya', 'german carrillo montoya')
+	# text = text.replace('gert coelingh', 'gert-jan coelingh')
+	# text = text.replace('gert-jan coehling', 'gert-jan coelingh')
+	# text = text.replace('guillaume kantzmann', 'guillaume kautzmann')
+	# text = text.replace('guillaumeduvaux', 'guillaume duvaux')
+	# text = text.replace('guillaumeduvoux', 'guillaume duvaux')
+	# text = text.replace('guycrockford', 'guy crockford')
+	# text = text.replace('heribert castilla', 'heriberto castilla-valdez')
+	# text = text.replace('hubertrammer', 'hubert rammer')
+	# text = text.replace('ianturnbull', 'ian turnbull')
+	# text = text.replace('ivolobmaier', 'ivo lobmaier')
+	# text = text.replace('jakub mosciki', 'jakub moscicki')
+	# text = text.replace('janelacy', 'jane lacy')
+	# text = text.replace('jean-chrisophemartin', 'jean-christophe martin')
+	# text = text.replace('jean-chrisophe martin', 'jean-christophe martin')
+	# text = text.replace('jean-pierreneras', 'jean-pierre neras')
+	# text = text.replace('juan palacios', 'juan palacio')
+	# text = text.replace('juan knaster', 'juan knaster')
+	# text = text.replace('jurgende jonghe', 'jurgen de jonghe')
+	# text = text.replace('jurgen dejonghe', 'jurgen de jonghe')
+	# text = text.replace('kacper szkudiarek', 'kacper szkudlarek')
+	# text = text.replace('keithjones', 'keith jones')
+	# text = text.replace('klausbarth', 'klaus barth')
+	# text = text.replace('laurent theimer-liehard', 'laurent theimer-lienhard')
+	# text = text.replace('lionelherblin', 'lionel herblin')
+
 	return text.title()
 
 def get_result(tag):
@@ -179,44 +269,20 @@ def process_archives(url):
 	print 'Found %d individual players' % len(all_players)
 	# print 'Failed for %d sites:' % len(failed_sites), failed_sites
 	print 40*'='
-	pprint(all_players)
+	for name in sorted(all_players): print repr(name)
+	with open('player_names.txt', 'w') as ofile:
+		for name in all_players:
+			ofile.write('%s\n'%name)
+		ofile.write('\n')
 	print 40*'='
 
-# url = BASEURL % SEASON
-# players, matches = process_page(url, printout=True)
-
-process_archives('http://club-squash.web.cern.ch/club-squash/resultats.html')
-
-## Second pass: knowing the number of players in each division, get their results
-# for divrank, player_names in players.iteritems():
-# 	print '-----------------------'
-# 	print 'Processing division %2d' % divrank
-
-# 	matches = [] # (name1, name2, result)
-# 	for name in player_names:
-# 		for n, result in enumerate(results[name]):
-# 			if result == EMPTYRESULT: continue
-# 			print '%-30s vs %30s : %s' % (name, player_names[n], result)
+def main():
+	get_name_dictionary('player_names.txt')
+	process_archives('http://club-squash.web.cern.ch/club-squash/resultats.html')
 
 
-# 		# player = row.find(is_player)
-# 		# if not player:
-# 		# 	# Empty player row?
-# 		# 	player_name = '-'
-# 		# 	# print row
-# 		# 	# raise RuntimeError("Something went wrong, this is not a player row")
-# 		# else:
-# 		# 	player_name = get_name(player)
-
-# 		# print '%-30s' % player_name,
-
-# 		# results = row.find_all(is_result)[:len(playerrows)]
-# 		# for entry in results:
-# 		# 	print get_result(entry),
-# 		# print ''
-
-
-
+if __name__ == '__main__':
+	main()
 
 
 
