@@ -1,7 +1,5 @@
 #! /usr/bin/env python
-
 import sys
-import os
 import re
 import requests
 from bs4 import BeautifulSoup
@@ -22,7 +20,7 @@ def get_name(tag):
 	text = text.replace('\r','')
 	text = text.replace('  ',' ')
 	text = re.sub(r'(\s?-?\s?\(?(1st|2nd|3rd|[1-9]{1}th) to finish\)?)', '', text)
-	return text
+	return text.title()
 
 def get_result(tag):
 	res = re.match(r'(\d)-(\d)', tag.get_text().strip()) # '3-1', '2-3', etc.
@@ -48,6 +46,7 @@ soup = BeautifulSoup(page_request.text, 'html.parser')
 
 players   = {} # div rank -> list of player names
 results   = {} # player name -> list of results
+matches   = {} # (name1, name2) -> result
 division_size = -1
 
 ## First pass: collect all divisions and players in each division
@@ -60,6 +59,7 @@ for table in soup.find_all('table'):
 		if div:
 			# Extract the division rank
 			rank = int(re.match(r'^Division\s([\d]{1,2})$', div.get_text()).group(1))
+			print '... processing division %d' % rank
 
 			# Extract the division size (once)
 			if division_size < 0:
@@ -72,15 +72,37 @@ for table in soup.find_all('table'):
 			# Player entry is always the second one in the row
 			players[rank] = [get_name(r.find_all('td')[1]) for r in prows]
 
+			print '     players: %s' % ', '.join(players[rank])
+
 			# Go through the rows and extract the match results
 			for name,prow in zip(players[rank], prows):
 				# Results start in 3rd position and we know how many to expect
+				# However we can start at the position of the player+1 to avoid
+				# double counting the matches.
+				pos = players[rank].index(name)
 				match_results = prow.find_all('td')[2:division_size+2]
-				for entry in match_results:
-					results.setdefault(name, []).append(get_result(entry))
 
-			# ####### DEBUG
+				for pos2,entry in zip(range(pos+1, division_size), match_results[pos+1:]):
+					player2_name = players[rank][pos2]
+					# print '     vs. %-30s:' % player2_name,
+					result = get_result(entry)
+					# print result
+					matches[(name, player2_name)] = result
+
+				for entry in match_results:
+					result = get_result(entry)
+					results.setdefault(name, []).append(result)
+
+			####### DEBUG
 			# break
+
+# Remove empty player names
+for divrank,names in players.iteritems():
+	players[divrank] = [n for n in names if len(n)]
+# Remove divisions with no players
+players = {r:ps for r,ps in players.iteritems() if len(ps)}
+results.pop('')
+matches.pop(('',''))
 
 print 'Found %d divisions of size %d' % (len(players), division_size)
 
@@ -91,19 +113,22 @@ assert division_size > 0
 # Make sure all divisions are the same size
 assert all([len(p) == division_size for p in players.values()])
 
-# for player,divrank in players.iteritems():
-# 	print '%-30s %d' % (player, divrank)
+for divrank, names in players.iteritems():
+	print 50*'-'
+	print 'Division %d' % divrank
+	for name in names:
+		print '%-30s %s' % (name, ' '.join(results[name]))
 
 ## Second pass: knowing the number of players in each division, get their results
-for divrank, player_names in players.iteritems():
-	print '-----------------------'
-	print 'Processing division %2d' % divrank
+# for divrank, player_names in players.iteritems():
+# 	print '-----------------------'
+# 	print 'Processing division %2d' % divrank
 
-	matches = [] # (name1, name2, result)
-	for name in player_names:
-		for n, result in enumerate(results[name]):
-			if result == EMPTYRESULT: continue
-			print '%-30s vs %30s : %s' % (name, player_names[n], result)
+# 	matches = [] # (name1, name2, result)
+# 	for name in player_names:
+# 		for n, result in enumerate(results[name]):
+# 			if result == EMPTYRESULT: continue
+# 			print '%-30s vs %30s : %s' % (name, player_names[n], result)
 
 
 # 		# player = row.find(is_player)
