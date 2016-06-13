@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 
 from pprint import pprint
 
-BASEURL = "http://club-squash.web.cern.ch/club-squash/archives/%s.htm"
+BASEURL = "http://club-squash.web.cern.ch/club-squash/archives/%s"
 try:
 	SEASON = sys.argv[1]
 except IndexError:
@@ -32,10 +32,20 @@ def get_result(tag):
 	else:
 		return EMPTYRESULT
 
+def get_division(tag):
+	# Extract the division rank
+	rank_match = re.match(r'^Division\s[\n\r]?([\d]{1,2}).?$', tag.get_text())
+	if not rank_match:
+		print 'Invalid division header:"%s"' % repr(tag.get_text())
+		raise RuntimeError('Invalid division header')
+	rank = int(rank_match.group(1))
+	return rank
+
+
 
 def process_page(url, printout=False):
 	## Load page
-	print '... processing %s' % url,
+	print '... processing %s' % url
 	page_request = urllib2.urlopen(url)
 
 	## Parse html
@@ -54,9 +64,7 @@ def process_page(url, printout=False):
 			div = row.find('td', string=re.compile('Division'))
 			# FIXME This is not going to work if the cell doesn't read 'Division ..'
 			if div:
-				# Extract the division rank
-				rank = int(re.match(r'^Division\s([\d]{1,2})$', div.get_text()).group(1))
-				# print '... processing division %d' % rank
+				rank = get_division(div)
 
 				# Extract the division size (once)
 				if division_size < 0:
@@ -98,17 +106,27 @@ def process_page(url, printout=False):
 		players[divrank] = [n for n in names if len(n)]
 	# Remove divisions with no players
 	players = {r:ps for r,ps in players.iteritems() if len(ps)}
-	results.pop('')
-	matches.pop(('',''))
+	results.pop('', None)
+	matches.pop(('',''), None)
+	# Remove empty matches
+	matches = {k:m for k,m in matches.iteritems() if m != EMPTYRESULT}
 
-	print ' %d divisions of size %d' % (len(players), division_size)
+	print ('  %d divisions of size %d, (%d played matches)' %
+		       (len(players), division_size, len(matches)))
 
-	# Make sure nothing was filled in the -1 rank
-	assert players.get(-1, None) is None
-	# Make sure we found a division size
-	assert division_size > 0
-	# Make sure all divisions are the same size
-	assert all([len(p) == division_size for p in players.values()])
+	try:
+		# Make sure nothing was filled in the -1 rank
+		assert players.get(-1, None) is None
+		# Make sure we found a division size
+		assert division_size > 0
+		# Make sure all divisions are the same size
+		# assert all([len(p) == division_size for p in players.values()])
+	except AssertionError:
+		if division_size > 0:
+			pprint(players)
+		else:
+			print "No valid divisions found"
+			raise RuntimeError('Invalid format')
 
 	if printout:
 		for divrank, names in players.iteritems():
@@ -121,9 +139,53 @@ def process_page(url, printout=False):
 
 	return players, matches
 
+def process_archives(url):
+	## Load page
+	page_request = urllib2.urlopen(url)
 
-url = BASEURL % SEASON
-players, matches = process_page(url, printout=True)
+	## Parse html
+	soup = BeautifulSoup(page_request, 'html.parser')
+	hrefs = soup.find_all('a', href=re.compile('archives'))
+	sites_to_process = [l['href'].replace('archives/','') for l in hrefs]
+
+	failed_sites = []
+	total_played_matches = 0
+	valid_seasons = []
+	all_players = set()
+	for site in sites_to_process:
+		try:
+			players, matches = process_page(BASEURL % site)
+		except RuntimeError, e:
+			failed_sites.append(site)
+		except StopIteration:
+			failed_sites.append(site)
+		except urllib2.HTTPError, e:
+			print e
+			failed_sites.append(site)
+
+		# Store all players
+		for div,names in players.iteritems():
+			for name in names:
+				all_players.add(name)
+
+		# Store valid seasons
+		if len(matches):
+			valid_seasons.append(site)
+
+		# Count number of matches
+		total_played_matches += len(matches)
+	print 40*'='
+	print 'Extracted %d played matches in %d seasons' % (total_played_matches, len(valid_seasons))
+	print 'Found %d individual players' % len(all_players)
+	# print 'Failed for %d sites:' % len(failed_sites), failed_sites
+	print 40*'='
+	pprint(all_players)
+	print 40*'='
+
+# url = BASEURL % SEASON
+# players, matches = process_page(url, printout=True)
+
+process_archives('http://club-squash.web.cern.ch/club-squash/resultats.html')
 
 ## Second pass: knowing the number of players in each division, get their results
 # for divrank, player_names in players.iteritems():
