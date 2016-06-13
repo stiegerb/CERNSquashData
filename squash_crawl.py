@@ -2,6 +2,7 @@
 import sys
 import re
 import urllib2
+import unicodedata
 
 from bs4 import BeautifulSoup
 
@@ -21,6 +22,7 @@ def get_name(tag):
 	text = text.replace('\r','')
 	text = text.replace('  ',' ')
 	text = re.sub(r'(\s?-?\s?\(?(1st|2nd|3rd|[1-9]{1}th) to finish\)?)', '', text)
+	text = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore')
 	return text.title()
 
 def get_result(tag):
@@ -31,8 +33,9 @@ def get_result(tag):
 		return EMPTYRESULT
 
 
-def process_page(url):
+def process_page(url, printout=False):
 	## Load page
+	print '... processing %s' % url,
 	page_request = urllib2.urlopen(url)
 
 	## Parse html
@@ -53,7 +56,7 @@ def process_page(url):
 			if div:
 				# Extract the division rank
 				rank = int(re.match(r'^Division\s([\d]{1,2})$', div.get_text()).group(1))
-				print '... processing division %d' % rank
+				# print '... processing division %d' % rank
 
 				# Extract the division size (once)
 				if division_size < 0:
@@ -66,7 +69,7 @@ def process_page(url):
 				# Player entry is always the second one in the row
 				players[rank] = [get_name(r.find_all('td')[1]) for r in prows]
 
-				print '     players: %s' % ', '.join(players[rank])
+				# print '     players: %s' % ', '.join(players[rank])
 
 				# Go through the rows and extract the match results
 				for name,prow in zip(players[rank], prows):
@@ -98,27 +101,29 @@ def process_page(url):
 	results.pop('')
 	matches.pop(('',''))
 
-	print 'Found %d divisions of size %d' % (len(players), division_size)
+	print ' %d divisions of size %d' % (len(players), division_size)
 
-	return players, results, matches
+	# Make sure nothing was filled in the -1 rank
+	assert players.get(-1, None) is None
+	# Make sure we found a division size
+	assert division_size > 0
+	# Make sure all divisions are the same size
+	assert all([len(p) == division_size for p in players.values()])
+
+	if printout:
+		for divrank, names in players.iteritems():
+			print 50*'-'
+			print 'Division %d' % divrank
+			for name in names:
+				print '%-30s %s' % (name, ' '.join(results[name]))
+		print 50*'-'
+
+
+	return players, matches
 
 
 url = BASEURL % SEASON
-players, results, matches = process_page(url)
-
-# Make sure nothing was filled in the -1 rank
-assert players.get(-1, None) is None
-# Make sure we found a division size
-division_size = len(players.values()[0])
-assert division_size > 0
-# Make sure all divisions are the same size
-assert all([len(p) == division_size for p in players.values()])
-
-for divrank, names in players.iteritems():
-	print 50*'-'
-	print 'Division %d' % divrank
-	for name in names:
-		print '%-30s %s' % (name, ' '.join(results[name]))
+players, matches = process_page(url, printout=True)
 
 ## Second pass: knowing the number of players in each division, get their results
 # for divrank, player_names in players.iteritems():
