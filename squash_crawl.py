@@ -59,7 +59,7 @@ def get_result(tag):
 def get_division(tag):
 	# Extract the division rank
 	div_text = re.sub(r'[\n\r]+','', tag.get_text())
-	rank_match = re.match(r'^Division\s+([\d]{1,2}).?$', div_text)
+	rank_match = re.match(r'^Division\s*([\d]{1,2}).?$', div_text)
 	if not rank_match:
 		print 'Invalid division header:"%s"' % repr(tag.get_text())
 		raise RuntimeError('Invalid division header')
@@ -101,6 +101,8 @@ def process_page(url, printout=False):
 				res_cols = row.find_all('td', string=re.compile(r'\b[A-G]{1}\b'))
 				division_size = len(res_cols)
 
+			# print 'Division %d (%d players)' % (rank, division_size)
+
 			# Store the next N rows as player rows
 			prows = [next(rows_iter) for _ in range(division_size)]
 
@@ -119,7 +121,7 @@ def process_page(url, printout=False):
 
 				for pos2,entry in zip(range(pos+1, division_size), match_results[pos+1:]):
 					player2_name = players[rank][pos2]
-					# print '     vs. %-30s:' % player2_name,
+					# print '  %-30s vs. %-30s:' % (name,player2_name),
 					result = get_result(entry)
 					# print result
 					matches[(name, player2_name)] = result
@@ -182,7 +184,7 @@ def process_archives(url):
 	for site in sites_to_process:
 
 		## DEBUG
-		# if not site in [u'1603.htm']: continue
+		# if not site in [u'08-09.html']: continue
 
 		try:
 			players, matches = process_page(BASEURL % site)
@@ -201,6 +203,7 @@ def process_archives(url):
 
 		except RuntimeError, e:
 			print e
+			if '0708' in site.lower() or 'summer' in site.lower(): continue
 			failed_sites.append(site)
 		except StopIteration:
 			failed_sites.append(site)
