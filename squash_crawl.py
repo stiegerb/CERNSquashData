@@ -6,14 +6,7 @@ import unicodedata
 
 from bs4 import BeautifulSoup
 
-from pprint import pprint
-
 BASEURL = "http://club-squash.web.cern.ch/club-squash/archives/%s"
-try:
-	SEASON = sys.argv[1]
-except IndexError:
-	SEASON = '1605'
-
 EMPTYRESULT = ' - '
 
 PNAMES = None
