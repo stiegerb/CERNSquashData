@@ -106,15 +106,18 @@ def process_page(url, printout=False, verbose=False):
 	## First pass: collect all divisions and players in each division
 	rank = -1
 	player_rows = {} # name -> row
+	found_table = False
 	for table in soup.find_all('table'):
+		if found_table: break
 		for row in table.find_all('tr'):
 			# Check if this starts a new division or not
-			div = row.find('td', string=re.compile('Division'))
+			div = row.find('td', string=re.compile('Division'), recursive=False)
 			if div:
 				rank = get_division(div)
+				found_table = True
 
 			# Player rows always start with a field containing A,B,C,...
-			elif row.find('td', string=re.compile(r'\b[A-G]{1}\b')):
+			elif row.find('td', string=re.compile(r'\b[A-G]{1}\b'), recursive=False):
 				# Player entry is then either the second or third entry in the row
 				player_name = get_name(row.find_all('td')[1])
 				if re.match(r'\b[A-G]{1}\b', player_name):
@@ -126,6 +129,7 @@ def process_page(url, printout=False, verbose=False):
 	##              extract the results from the rows.
 	for divrank, player_names in divisions.iteritems():
 		division_size = len(player_names)
+
 		if verbose:
 			print 'Division %d with %d players:' % (divrank, len(player_names)),
 			print ' %s' % ', '.join(player_names)
@@ -136,6 +140,7 @@ def process_page(url, printout=False, verbose=False):
 			# However we can start at the position of the player+1 to avoid
 			# double counting the matches.
 			pos = player_names.index(name1)
+			## FIXME: this breaks when player name is not in second field
 			match_results = player_rows[name1].find_all('td')[2:division_size+2]
 			for pos2,entry in zip(range(pos+1, division_size), match_results[pos+1:]):
 				name2 = player_names[pos2]
@@ -214,11 +219,11 @@ def process_archives(url):
 	for site in sites_to_process:
 
 		## DEBUG
-		# if not site in [u'1311.htm']: continue
+		# if not site in [u'05-06.html']: continue
 		season = site.rsplit('.')[0] # drop the .htm
 
 		try:
-			divisions, matches = process_page(BASEURL % site)
+			divisions, matches = process_page(BASEURL % site, verbose=False)
 
 			# Store all result for all players
 			for div,names in divisions.iteritems():
