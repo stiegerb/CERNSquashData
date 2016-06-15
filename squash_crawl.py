@@ -107,8 +107,7 @@ def process_page(url, printout=False, verbose=False):
 	rank = -1
 	player_rows = {} # name -> row
 	for table in soup.find_all('table'):
-		rows_iter = iter(table.find_all('tr'))
-		for row in rows_iter:
+		for row in table.find_all('tr'):
 			# Check if this starts a new division or not
 			div = row.find('td', string=re.compile('Division'))
 			if div:
@@ -116,8 +115,10 @@ def process_page(url, printout=False, verbose=False):
 
 			# Player rows always start with a field containing A,B,C,...
 			elif row.find('td', string=re.compile(r'\b[A-G]{1}\b')):
-				# Player entry is then the second one in the row
+				# Player entry is then either the second or third entry in the row
 				player_name = get_name(row.find_all('td')[1])
+				if re.match(r'\b[A-G]{1}\b', player_name):
+					player_name = get_name(row.find_all('td')[2])
 				divisions.setdefault(rank,[]).append(player_name)
 				player_rows[player_name] = row
 
