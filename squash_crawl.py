@@ -1,13 +1,14 @@
 #! /usr/bin/env python
 import sys
 import re
+import json
 import urllib2
 import unicodedata
 
 from bs4 import BeautifulSoup
 
 BASEURL = "http://club-squash.web.cern.ch/club-squash/archives/%s"
-EMPTYRESULT = ' - '
+EMPTYRESULT = None
 
 PNAMES = None
 def get_name_dictionary(filename):
@@ -43,21 +44,36 @@ def get_name(tag):
 	return PNAMES.setdefault(key, text.title())
 
 def get_result(tag):
-	res = re.match(r'(\d)-(\d)', tag.get_text().strip()) # '3-1', '2-3', etc.
-	if res:
-		return str(tag.get_text().strip())
+	text = tag.get_text().strip()
+	text = re.sub(r'[\n\r]+','', text)
+	if re.match(r'(\d{1})-(\d{1})', text): # '3-1', '2-3', etc.
+		return str(text)
+	elif re.match(r'3', text): # 3
+		return '3'
 	else:
 		return EMPTYRESULT
 
 def invert_result(result):
 	if result == EMPTYRESULT: return result
 	if result in ['1', '2', '3']: return '0'
-	score = re.match(r'(\d)-(\d)', result)
+	score = re.match(r'(\d{1})-(\d{1})', result)
 	try:
 		return '%d-%d' % (int(score.group(2)), int(score.group(1)))
 	except ValueError, e:
 		print "Wrong result format? %s" % result
 		raise e
+
+def parse_result(result):
+	if result == EMPTYRESULT: return EMPTYRESULT
+	try:
+		score = re.match(r'(\d{1})-(\d{1})', result)
+		return int(score.group(1))-int(score.group(2))
+	except AttributeError:
+		try:
+			score = re.match(r'^(\d{1})$', result)
+			return int(score.group(1))
+		except AttributeError:
+			return EMPTYRESULT
 
 def get_division(tag):
 	# Extract the division rank
@@ -140,15 +156,17 @@ def process_page(url, printout=False, verbose=False):
 	matches.pop(('',''), None)
 	# Remove empty matches
 	matches = {k:m for k,m in matches.iteritems() if m != EMPTYRESULT}
+	# Check that there are no duplicate matches
+	assert(set(matches.keys()).isdisjoint(set([(y,x) for x,y in matches.keys()])))
 
 	print ('  %2d divisions, %3d players, %3d played matches' %
-		       (len(divisions), len(results), len(matches)))
+			   (len(divisions), len(results), len(matches)))
 
 	if verbose:
 		for divrank,names in sorted(divisions.iteritems()):
 			print '----- Division %d' % divrank
 			for name in names:
-				print '%-30s: ' % name, results[name]
+				print '%-30s: ' % name, results.get(name)
 
 
 	if printout:
@@ -156,11 +174,27 @@ def process_page(url, printout=False, verbose=False):
 			print 50*'-'
 			print 'Division %d' % divrank
 			for name in names:
-				print '%-30s %s' % (name, ' '.join(results[name]))
+				print '%-30s %s' % (name, ' '.join(results.get(name)))
 		print 50*'-'
 
 
 	return divisions, matches
+
+SEASONS = None
+def get_season(season_key, filename='seasons.txt'):
+	global SEASONS
+	if not SEASONS:
+		SEASONS = {}
+		with open(filename, 'r') as ifile:
+			for line in ifile:
+				if not len(line.strip()): continue
+				key,value = tuple(line.strip().split(',', 1))
+				year, month = tuple(value.strip().split(' '))
+				assert(month in ['%02d'%d for d in range(1,13)])
+				SEASONS[key] = (int(year), int(month))
+	if 'summer' in season_key.lower():
+		return (int('20' + season_key.lower().split('summer')[1]), 7)
+	return SEASONS.get(season_key)
 
 def process_archives(url):
 	## Load page
@@ -173,24 +207,57 @@ def process_archives(url):
 
 	failed_sites = []
 	total_played_matches = 0
-	valid_seasons = []
-	all_players = set()
+	sq_data = {}
+	sq_data['seasons'] = {} # season name -> data
+	sq_data['players'] = {} # name -> data
 	for site in sites_to_process:
 
 		## DEBUG
-		# if not site in [u'08-09.html']: continue
+		# if not site in [u'1311.htm']: continue
+		season = site.rsplit('.')[0] # drop the .htm
 
 		try:
-			players, matches = process_page(BASEURL % site)
+			divisions, matches = process_page(BASEURL % site)
 
-			# Store all players
-			for div,names in players.iteritems():
-				for name in names:
-					all_players.add(name)
+			# Store all result for all players
+			for div,names in divisions.iteritems():
+				for name1 in names:
+					pdata = sq_data['players'].setdefault(name1, {})
+					pdata.setdefault('n_seasons_played', 0)
+					pdata.setdefault('n_total_wins', 0)
+					pdata.setdefault('n_total_matches', 0)
+					pdata['n_seasons_played'] += 1
+
+					sdata = pdata.setdefault('seasons', {}).setdefault(season, {})
+					sdata['matches'] = {}
+					sdata['division'] = div
+					sdata['n_wins'] = 0
+					for name2 in names:
+						if name1 == name2: continue
+						result = matches.get((name1, name2))
+						if not result:
+							result = invert_result(matches.get((name2,name1)))
+						if result:
+							sdata['matches'][name2] = result
+							if parse_result(result) > 0:
+								sdata['n_wins'] += 1
+
+
+					pdata['n_total_wins'] += sdata['n_wins']
+					pdata['n_total_matches'] += len(sdata['matches'])
 
 			# Store valid seasons
 			if len(matches):
-				valid_seasons.append(site)
+				season_data = sq_data['seasons'].setdefault(season, {})
+				year, month = get_season(season)
+				season_data['year'] = year
+				season_data['month'] = month
+				season_data['n_divisions'] = len(divisions)
+				n_players = sum([len(n) for n in divisions.values()])
+				season_data['n_players'] = n_players
+				season_data['n_matches'] = len(matches)
+				n_expected_matches = sum([len(n)*(len(n)-1)/2 for n in divisions.values()])
+				season_data['completion_rate'] = float(len(matches)) / n_expected_matches
 
 			# Count number of matches
 			total_played_matches += len(matches)
@@ -199,6 +266,8 @@ def process_archives(url):
 			print e
 			if '0708' in site.lower() or 'summer' in site.lower(): continue
 			failed_sites.append(site)
+		except AssertionError:
+			failed_sites.append(site)
 		except StopIteration:
 			failed_sites.append(site)
 		except urllib2.HTTPError, e:
@@ -206,10 +275,16 @@ def process_archives(url):
 			failed_sites.append(site)
 
 	print 40*'='
-	print 'Extracted %d played matches in %d seasons' % (total_played_matches, len(valid_seasons))
-	print 'Found %d individual players' % len(all_players)
+	print ('Extracted %d played matches in %d seasons' %
+		           (total_played_matches, len(sq_data['seasons'])))
+	print 'Found %d individual players' % len(sq_data['players'])
 	print 'Failed for %d sites:' % len(failed_sites), failed_sites
 	print 40*'='
+
+
+	## Write to json file
+	with open('squash_data.json', 'w') as ofile:
+		json.dump(sq_data, ofile, indent=2, sort_keys=True)
 
 def main():
 	get_name_dictionary('player_names.txt')
