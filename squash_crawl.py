@@ -261,6 +261,7 @@ def process_archives(url):
 				season_data['n_divisions'] = len(divisions)
 				n_players = sum([len(n) for n in divisions.values()])
 				season_data['n_players'] = n_players
+				season_data['players'] = [n for ns in divisions.values() for n in ns]
 				season_data['n_matches'] = len(matches)
 				n_expected_matches = sum([len(n)*(len(n)-1)/2 for n in divisions.values()])
 				season_data['completion_rate'] = float(len(matches)) / n_expected_matches
