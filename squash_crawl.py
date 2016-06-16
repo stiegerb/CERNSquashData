@@ -22,9 +22,10 @@ def get_name_dictionary(filename):
 				PNAMES[key] = value.strip()
 	return len(PNAMES)
 
-def get_name(tag):
+def get_name(text):
 	global PNAMES
-	text = tag.get_text().strip().lower()
+	if not PNAMES: get_name_dictionary('player_names.txt')
+	text = text.strip().lower()
 	text = text.replace('\n', '')
 	text = text.replace('\r', '')
 	text = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore')
@@ -119,9 +120,9 @@ def process_page(url, printout=False, verbose=False):
 			# Player rows always start with a field containing A,B,C,...
 			elif row.find('td', string=re.compile(r'\b[A-G]{1}\b'), recursive=False):
 				# Player entry is then either the second or third entry in the row
-				player_name = get_name(row.find_all('td')[1])
+				player_name = get_name(row.find_all('td')[1].get_text())
 				if re.match(r'\b[A-G]{1}\b', player_name):
-					player_name = get_name(row.find_all('td')[2])
+					player_name = get_name(row.find_all('td')[2].get_text())
 				divisions.setdefault(rank,[]).append(player_name)
 				player_rows[player_name] = row
 
