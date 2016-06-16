@@ -23,19 +23,33 @@ def get_name_dictionary(filename):
     return len(PNAMES)
 
 def get_name(text):
+    """
+    Clean the text of a player name field, then look up the name
+    in the dictionary, or store it there if it doesn't exist yet.
+
+    FIXME: If the dictionary changes, we should write it back to the file.
+    """
     global PNAMES
     if not PNAMES: get_name_dictionary('player_names.txt')
     text = text.strip().lower()
     text = text.replace('\n', '')
     text = text.replace('\r', '')
+    # Replace unicode characters by ascii ones
     text = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore')
+    # Sometimes there's a 'home' in there (from phone numbers, I assume)
     text = re.sub(r'home','', text)
+    # Remove the '1st/2nd/3rd/... to finish'
     text = re.sub(r'(\s?-?\s?\(?(1st|2nd|3rd|[1-9]{1}th)\s+to\s+finish\)?)', '', text)
+    # Remove trailing dashes
     text = re.sub(r'\s+-$', '', text, re.MULTILINE)
+    # Remove trailing 'out's
     text = re.sub(r'\s+out$', '', text, re.MULTILINE)
+    # Remove #,(,) and numbers
     text = re.sub(r'[\#\+0-9\)\(\.]','', text)
+    # Replace double spaces by single spaces
     text = re.sub(r'\s{2,}',' ', text)
 
+    # Some more custom cleaning
     text = text.replace('unavailable', '')
     text = text.replace('out for summer', '')
     text = text.replace(' ?', '')
@@ -44,8 +58,13 @@ def get_name(text):
     key = text.replace(' ', '')
     return PNAMES.setdefault(key, text.title())
 
-def get_result(tag):
-    text = tag.get_text().strip()
+def get_result(text):
+    """
+    Process a result text to return either the clean string
+    ('3-1', '2-3', etc.) or return the empty result if the match
+    wasn't played.
+    """
+    text = text.strip()
     text = re.sub(r'[\n\r]+','', text)
     if re.match(r'(\d{1})-(\d{1})', text): # '3-1', '2-3', etc.
         return str(text)
@@ -65,6 +84,7 @@ def invert_result(result):
         raise e
 
 def parse_result(result):
+    """Return the game difference as an integer"""
     if result == EMPTYRESULT: return EMPTYRESULT
     try:
         score = re.match(r'(\d{1})-(\d{1})', result)
@@ -76,25 +96,33 @@ def parse_result(result):
         except AttributeError:
             return EMPTYRESULT
 
-def get_division(tag):
-    # Extract the division rank
-    div_text = re.sub(r'[\n\r]+','', tag.get_text())
+def get_division(text):
+    """Extract the division rank from a string like 'Division 5'"""
+    div_text = re.sub(r'[\n\r]+','', text)
     rank_match = re.match(r'^Division\s*([\d]{1,2}).?$', div_text)
     if not rank_match:
-        print 'Invalid division header:"%s"' % repr(tag.get_text())
+        print 'Invalid division header:"%s"' % repr(text)
         raise RuntimeError('Invalid division header')
     rank = int(rank_match.group(1))
     return rank
 
 def process_page(url, printout=False, verbose=False):
-    ## Load page
+    """
+    Extract the players and matches from a single squash archive page
+    First open the url, then parse the html using BeautifulSoup.
+
+    The code looks for a table that contains a row with 'Division' in it.
+    Then looks for rows with players and results.
+
+    Returns two dictionaries, one with all the players for each division,
+    one with all the results for each match played.
+    """
     print '... processing %s' % url
     page_request = urllib2.urlopen(url)
 
-    ## Parse html
     soup = BeautifulSoup(page_request, 'html.parser')
 
-    divisions   = {} # div rank -> list of player names
+    divisions = {} # div rank -> list of player names
     results   = {} # player name -> list of results
     matches   = {} # (name1, name2) -> result
 
@@ -107,22 +135,23 @@ def process_page(url, printout=False, verbose=False):
     ## First pass: collect all divisions and players in each division
     rank = -1
     player_rows = {} # name -> row
-    found_table = False
+    found_table = False # Break after a valid table is found
     for table in soup.find_all('table'):
         if found_table: break
         for row in table.find_all('tr'):
             # Check if this starts a new division or not
             div = row.find('td', string=re.compile('Division'), recursive=False)
             if div:
-                rank = get_division(div)
+                rank = get_division(div.get_text())
                 found_table = True
 
             # Player rows always start with a field containing A,B,C,...
             elif row.find('td', string=re.compile(r'\b[A-G]{1}\b'), recursive=False):
                 # Player entry is then either the second or third entry in the row
                 player_name = get_name(row.find_all('td')[1].get_text())
-                if re.match(r'\b[A-G]{1}\b', player_name):
+                if re.match(r'\b[A-G]{1}\b', player_name): # There was an empty field first
                     player_name = get_name(row.find_all('td')[2].get_text())
+
                 divisions.setdefault(rank,[]).append(player_name)
                 player_rows[player_name] = row
 
@@ -140,12 +169,12 @@ def process_page(url, printout=False, verbose=False):
             # Results start in 3rd position and we know how many to expect
             # However we can start at the position of the player+1 to avoid
             # double counting the matches.
-            pos = player_names.index(name1)
             ## FIXME: this breaks when player name is not in second field
+            pos = player_names.index(name1)
             match_results = player_rows[name1].find_all('td')[2:division_size+2]
             for pos2,entry in zip(range(pos+1, division_size), match_results[pos+1:]):
                 name2 = player_names[pos2]
-                result = get_result(entry)
+                result = get_result(entry.get_text())
                 matches[(name1, name2)] = result
                 results.setdefault(name1, []).append(result)
                 results.setdefault(name2, []).append(invert_result(result))
@@ -204,16 +233,19 @@ def get_season(season_key, filename='seasons.txt'):
     return SEASONS.get(season_key)
 
 def process_archives(url):
-    ## Load page
+    """
+    Extract a list from the archives page and process each season.
+    Then store the data in a dictionary and dump it to a json file.
+    """
     page_request = urllib2.urlopen(url)
 
-    ## Parse html
     soup = BeautifulSoup(page_request, 'html.parser')
     hrefs = soup.find_all('a', href=re.compile('archives'))
     sites_to_process = [l['href'].replace('archives/','') for l in hrefs]
 
-    failed_sites = []
+    failed_sites = [] # Keep track if something went wrong
     total_played_matches = 0
+
     sq_data = {}
     sq_data['seasons'] = {} # season name -> data
     sq_data['players'] = {} # name -> data
@@ -221,7 +253,7 @@ def process_archives(url):
 
         ## DEBUG
         # if not site in [u'05-06.html']: continue
-        season = site.rsplit('.')[0] # drop the .htm
+        season = site.rsplit('.')[0] # drop the file ending
 
         try:
             divisions, matches = process_page(BASEURL % site, verbose=False)
@@ -270,15 +302,14 @@ def process_archives(url):
             # Count number of matches
             total_played_matches += len(matches)
 
-        except RuntimeError, e:
+        except RuntimeError, e:      # Something wrong with parsing the data
             print e
+            # Skip summer leagues
             if '0708' in site.lower() or 'summer' in site.lower(): continue
             failed_sites.append(site)
-        except AssertionError:
+        except AssertionError:       # Some inconsistency after processing the data
             failed_sites.append(site)
-        except StopIteration:
-            failed_sites.append(site)
-        except urllib2.HTTPError, e:
+        except urllib2.HTTPError, e: # Something wrong with the url
             print e
             failed_sites.append(site)
 
@@ -286,7 +317,8 @@ def process_archives(url):
     print ('Extracted %d played matches in %d seasons' %
                    (total_played_matches, len(sq_data['seasons'])))
     print 'Found %d individual players' % len(sq_data['players'])
-    print 'Failed for %d sites:' % len(failed_sites), failed_sites
+    if failed_sites:
+        print 'Failed for %d sites:' % len(failed_sites), failed_sites
     print 40*'='
 
 
@@ -295,7 +327,6 @@ def process_archives(url):
         json.dump(sq_data, ofile, indent=2, sort_keys=True)
 
 def main():
-    get_name_dictionary('player_names.txt')
     process_archives('http://club-squash.web.cern.ch/club-squash/resultats.html')
 
 

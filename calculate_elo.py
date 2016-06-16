@@ -12,7 +12,13 @@ def expected_score(rating_diff):
     return 1.0 / (1+10**(-1.0*rating_diff/400.))
 
 def calculate_elo(elo1, elo2, result):
-    ## See here: http://www.eloratings.net/system.html
+    """
+    Calculate the change in elo for two players
+    `result` is a string that is accepted by `parse_result`,
+    e.g. '3-1', '2-3', '2', etc.
+
+    See here for the algorithm: http://www.eloratings.net/system.html
+    """
     score = parse_result(result)
     if not score: return elo1, elo2
 
@@ -33,14 +39,25 @@ def calculate_elo(elo1, elo2, result):
     return elo1_new, elo2_new
 
 def sort_seasons(sdata):
-    ## Sort seasons by date
+    """Sort seasons by date"""
     seasons = [(k, v['year'], v['month']) for k,v in sdata.iteritems()]
     seasons.sort(key=itemgetter(1,2))
     return seasons
 
 
 def main():
-    ## Read the data
+    """
+    Go through the squash data dictionary and add elo ratings for each
+    player.
+
+    Adds a 'last_elo' field for the player data, corresponding to the current
+    rating and an 'elo' field to each season for that seasons rating.
+
+    Also prints the highest elo ranking and the player and season where it
+    occurred.
+
+    Writes the new dictionary back to the original json file.
+    """
     squash_data = None
     with open('squash_data.json', 'r') as ifile:
         squash_data = json.load(ifile)
@@ -97,9 +114,6 @@ def main():
     ## Dump to json file
     with open('squash_data.json', 'w') as ofile:
         json.dump(squash_data, ofile, indent=2, sort_keys=True)
-
-
-
 
 if __name__ == '__main__':
     main()
