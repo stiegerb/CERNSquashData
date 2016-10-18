@@ -3,7 +3,7 @@ import sys
 import json
 
 def print_player(data, mute=False):
-    message = '{name:<30} | {elo:6.1f} | {tot:4} | {wins:4} | {rate:7.2%} | {seasons:4} |'
+    message = '{name:<30} | {elo:6.1f} | {tot:4} | {wins:4} | {rate:7.2%} | {seasons:7} |'
     if not mute:
         print message.format(
                      name=name,
@@ -31,9 +31,10 @@ for name, data in squash_data['players'].iteritems():
     if data['n_total_matches'] < CUTOFF: continue
     winrates.append((name,print_player(data, mute=True)))
 
-header = "Player name                    | Elo    | Tot  | Win  | Winrate | Seas |"
+header = "Player name                    | Elo    | Tot  | Win  | Winrate | Seasons |"
 print header
 print len(header)*"-"
 for name,(winrate, elo) in sorted(winrates, key=lambda x: x[1][1], reverse=True):
+    # if not name in squash_data['seasons']['1609']['players']: continue
     print_player(squash_data['players'][name], mute=False)
 print len(header)*"-"

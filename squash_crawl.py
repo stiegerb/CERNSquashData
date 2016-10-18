@@ -4,6 +4,7 @@ import re
 import json
 import urllib2
 import unicodedata
+import argparse
 
 from bs4 import BeautifulSoup
 
@@ -99,7 +100,7 @@ def parse_result(result):
 def get_division(text):
     """Extract the division rank from a string like 'Division 5'"""
     div_text = re.sub(r'[\n\r]+','', text)
-    rank_match = re.match(r'^Division\s*([\d]{1,2}).?$', div_text)
+    rank_match = re.match(r'.*\bDivision\s*([\d]{1,2}).?$', div_text)
     if not rank_match:
         print 'Invalid division header:"%s"' % repr(text)
         raise RuntimeError('Invalid division header')
@@ -140,13 +141,13 @@ def process_page(url, printout=False, verbose=False):
         if found_table: break
         for row in table.find_all('tr'):
             # Check if this starts a new division or not
-            div = row.find('td', string=re.compile('Division'), recursive=False)
+            div = row.find('td', text=re.compile('Division'), recursive=False)
             if div:
                 rank = get_division(div.get_text())
                 found_table = True
 
             # Player rows always start with a field containing A,B,C,...
-            elif row.find('td', string=re.compile(r'\b[A-G]{1}\b'), recursive=False):
+            elif row.find('td', text=re.compile(r'\b[A-G]{1}\b'), recursive=False):
                 # Player entry is then either the second or third entry in the row
                 player_name = get_name(row.find_all('td')[1].get_text())
                 if re.match(r'\b[A-G]{1}\b', player_name): # There was an empty field first
@@ -228,11 +229,13 @@ def get_season(season_key, filename='seasons.txt'):
                 year, month = tuple(value.strip().split(' '))
                 assert(month in ['%02d'%d for d in range(1,13)])
                 SEASONS[key] = (int(year), int(month))
+        if not season_key in SEASONS:
+            raise RuntimeError("Season key %s not in '%s' file, please add" % (season_key, filename))
     if 'summer' in season_key.lower():
         return (int('20' + season_key.lower().split('summer')[1]), 7)
     return SEASONS.get(season_key)
 
-def process_archives(url):
+def process_archives(url, verbose=False):
     """
     Extract a list from the archives page and process each season.
     Then store the data in a dictionary and dump it to a json file.
@@ -256,7 +259,7 @@ def process_archives(url):
         season = site.rsplit('.')[0] # drop the file ending
 
         try:
-            divisions, matches = process_page(BASEURL % site, verbose=False)
+            divisions, matches = process_page(BASEURL % site, verbose=verbose)
 
             # Store all result for all players
             for div,names in divisions.iteritems():
@@ -327,7 +330,12 @@ def process_archives(url):
         json.dump(sq_data, ofile, indent=2, sort_keys=True)
 
 def main():
-    process_archives('http://club-squash.web.cern.ch/club-squash/resultats.html')
+    parser = argparse.ArgumentParser(
+        description="Crawl the CERN squash club archives and get match data")
+    parser.add_argument('-v', '--verbose', help='Verbose mode', action="store_true")
+    args = parser.parse_args()
+
+    process_archives('http://club-squash.web.cern.ch/club-squash/resultats.html', verbose=args.verbose)
 
 
 if __name__ == '__main__':
