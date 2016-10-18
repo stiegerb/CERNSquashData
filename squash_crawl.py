@@ -7,6 +7,7 @@ import unicodedata
 import argparse
 
 from bs4 import BeautifulSoup
+from collections import defaultdict
 
 BASEURL = "http://club-squash.web.cern.ch/club-squash/archives/%s"
 EMPTYRESULT = None
@@ -249,9 +250,7 @@ def process_archives(url, verbose=False):
     failed_sites = [] # Keep track if something went wrong
     total_played_matches = 0
 
-    sq_data = {}
-    sq_data['seasons'] = {} # season name -> data
-    sq_data['players'] = {} # name -> data
+    squash_data = defaultdict(dict)
     for site in sites_to_process:
 
         ## DEBUG
@@ -264,13 +263,10 @@ def process_archives(url, verbose=False):
             # Store all result for all players
             for div,names in divisions.iteritems():
                 for name1 in names:
-                    pdata = sq_data['players'].setdefault(name1, {})
-                    pdata.setdefault('n_seasons_played', 0)
-                    pdata.setdefault('n_total_wins', 0)
-                    pdata.setdefault('n_total_matches', 0)
-                    pdata['n_seasons_played'] += 1
+                    player_data = squash_data['players'].setdefault(name1, defaultdict(int))
+                    player_data['n_seasons_played'] += 1
 
-                    sdata = pdata.setdefault('seasons', {}).setdefault(season, {})
+                    sdata = player_data.setdefault('seasons', {}).setdefault(season, {})
                     sdata['matches'] = {}
                     sdata['division'] = div
                     sdata['n_wins'] = 0
@@ -285,12 +281,12 @@ def process_archives(url, verbose=False):
                                 sdata['n_wins'] += 1
 
 
-                    pdata['n_total_wins'] += sdata['n_wins']
-                    pdata['n_total_matches'] += len(sdata['matches'])
+                    player_data['n_total_wins'] += sdata['n_wins']
+                    player_data['n_total_matches'] += len(sdata['matches'])
 
             # Store valid seasons
             if len(matches):
-                season_data = sq_data['seasons'].setdefault(season, {})
+                season_data = squash_data['seasons'].setdefault(season, {})
                 year, month = get_season(season)
                 season_data['year'] = year
                 season_data['month'] = month
@@ -318,8 +314,8 @@ def process_archives(url, verbose=False):
 
     print 40*'='
     print ('Extracted %d played matches in %d seasons' %
-                   (total_played_matches, len(sq_data['seasons'])))
-    print 'Found %d individual players' % len(sq_data['players'])
+                   (total_played_matches, len(squash_data['seasons'])))
+    print 'Found %d individual players' % len(squash_data['players'])
     if failed_sites:
         print 'Failed for %d sites:' % len(failed_sites), failed_sites
     print 40*'='
@@ -327,7 +323,7 @@ def process_archives(url, verbose=False):
 
     ## Write to json file
     with open('squash_data.json', 'w') as ofile:
-        json.dump(sq_data, ofile, indent=2, sort_keys=True)
+        json.dump(squash_data, ofile, indent=2, sort_keys=True)
 
 def main():
     parser = argparse.ArgumentParser(
